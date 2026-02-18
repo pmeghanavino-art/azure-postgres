@@ -1,0 +1,64 @@
+name: Build & Deploy to Azure VM
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build Project
+        run: ./gradlew build
+
+      - name: Copy JAR to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          source: "build/libs/*.jar"
+          target: "/home/${{ secrets.VM_USER }}/app"
+
+      - name: Run Docker on VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            
+            docker stop azure-app || true
+            docker rm azure-app || true
+            
+            docker stop azure-postgres || true
+            docker rm azure-postgres || true
+            
+            docker network create azure-postgres || true
+            
+            docker run -d \
+              --name azure-postgres \
+              --network azure-postgres \
+              -e POSTGRES_DB=azure \
+              -e POSTGRES_USER=postgres \
+              -e POSTGRES_PASSWORD=postgres \
+              postgres:15
+            
+            docker build -t azure-app-image /home/${{ secrets.VM_USER }}/app
+            
+            docker run -d \
+              --name azure-app \
+              --network azure-postgres \
+              -p 8080:8080 \
+              azure-app-image
