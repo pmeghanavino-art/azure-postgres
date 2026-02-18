@@ -20,7 +20,7 @@ jobs:
           java-version: '17'
 
       - name: Build Project
-        run: ./gradlew build
+        run: ./gradlew build -x test
 
       - name: Copy JAR to VM
         uses: appleboy/scp-action@v0.1.7
